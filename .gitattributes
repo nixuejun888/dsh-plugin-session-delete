@@ -1,0 +1,3 @@
+# Normalize to LF so the plugin behaves the same on every platform.
+* text=auto eol=lf
+*.bat text eol=crlf

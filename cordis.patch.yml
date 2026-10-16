@@ -1,0 +1,6 @@
+# Mounting this package as a profile bundle. The desktop profile installs it
+# through its own cordis.patch.yml instead (see README.md), so this file only
+# matters when the package is listed in `dsh.profile.bundles`.
+- insert:
+    - id: session-delete
+      name: '@local/dsh-plugin-session-delete'

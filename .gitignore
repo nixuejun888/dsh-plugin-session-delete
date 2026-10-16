@@ -1,0 +1,14 @@
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# Runtime data never lives inside this package, but keep it out anyway:
+# the audit journal and the trash bin belong to <DSH_HOME>/plugins/dsh-session-delete/.
+trash/
+deleted.jsonl
+*.log
+
+# Test scratch
+backup/
+.DS_Store
+Thumbs.db

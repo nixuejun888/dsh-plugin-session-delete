@@ -1,0 +1,59 @@
+{
+  "name": "@local/dsh-plugin-session-delete",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Delete DSH conversations: a 「删除对话」 item in the sidebar session menu plus out-of-band deletion of the session log and its projection cache (archive first so the row disappears, then move to a recoverable trash or purge).",
+  "license": "MIT",
+  "author": "nixuejun888",
+  "homepage": "https://github.com/nixuejun888/dsh-plugin-session-delete#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nixuejun888/dsh-plugin-session-delete.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nixuejun888/dsh-plugin-session-delete/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "session",
+    "conversation",
+    "delete",
+    "trash"
+  ],
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "scripts": {
+    "test": "node test/host.test.mjs && node test/client.test.mjs",
+    "test:host": "node test/host.test.mjs",
+    "test:client": "node test/client.test.mjs",
+    "test:e2e": "node test/e2e-real.mjs"
+  },
+  "files": [
+    "lib",
+    "test",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ]
+}
