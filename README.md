@@ -1,5 +1,8 @@
 # dsh-plugin-session-delete
 
+[![test](https://github.com/nixuejun888/dsh-plugin-session-delete/actions/workflows/test.yml/badge.svg)](https://github.com/nixuejun888/dsh-plugin-session-delete/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 给 DSH 加一个「删除对话」能力：会话行的 `...` 菜单里多一项**删除对话**，确认后真正把该对话从磁盘上移除。
 
 > **English** — A **Delete conversation** action for [DSH](https://github.com/deepseek-ai) (DeepSeek Harness). DSH ships no session-deletion API (`dsh-session-persistence` is append-only; `@deepseek-ai/dsh-workspace` can only *archive*), so this plugin deletes **out-of-band**: it archives the session first — that is what makes the sidebar row disappear immediately — then moves the session log and its projection cache into a recoverable trash directory, or permanently removes them when the「永久删除」box is ticked. Install by cloning this repository and linking it into your DSH profile (see 安装 below); it is not published to npm. MIT licensed. Both halves load only at DSH startup, so a **full restart** is required after installing or editing it.
