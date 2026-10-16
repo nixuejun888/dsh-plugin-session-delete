@@ -23,7 +23,23 @@ DSH 本身没有删除会话的 API：
 
 ## 安装（本地挂载，未发布 npm）
 
-包名是 `@local/dsh-plugin-session-delete`：`@local/` 作用域表示这是本地插件，**没有发布到 npm**（`private: true` 就是防止误发）。安装方式是克隆本仓库后 `link:` 进 DSH profile。下面用 `<REPO>` 表示克隆目录、`<DSH_HOME>` 表示 DSH 主目录（默认 `~/.dsh`）、`<profile>` 表示 profile 名（如 `desktop`）：
+包名是 `@local/dsh-plugin-session-delete`：`@local/` 作用域表示这是本地插件，**没有发布到 npm**（`private: true` 就是防止误发），所以只能下载发布包或克隆仓库后 `link:` 挂载。下面用 `<REPO>` 表示插件目录、`<DSH_HOME>` 表示 DSH 主目录（默认 `~/.dsh`）、`<profile>` 表示 profile 名（如 `desktop`）。
+
+### 方式 A：下载发布包
+
+每个版本 tag 都会由 [`release.yml`](.github/workflows/release.yml) 打出一个可直接安装的 zip（内容 = `lib/` + `package.json` + `cordis.patch.yml` + `README.md` + `LICENSE`）：
+
+1. 从 [Releases](https://github.com/nixuejun888/dsh-plugin-session-delete/releases) 下载 `dsh-plugin-session-delete-vX.Y.Z.zip`，用同一个 release 里的 `SHA256SUMS.txt` 校验后解压；
+2. 把解压出的 `dsh-plugin-session-delete/` 整个目录放进 `<DSH_HOME>/local-plugins/`，于是 `<REPO>` = `<DSH_HOME>/local-plugins/dsh-plugin-session-delete`；
+3. 继续下面的「挂载」。
+
+### 方式 B：克隆仓库
+
+```bash
+git clone https://github.com/nixuejun888/dsh-plugin-session-delete <REPO>
+```
+
+### 挂载（两种方式相同）
 
 1. `<DSH_HOME>/profiles/<profile>/package.json` 的 `dependencies` 里加
    `"@local/dsh-plugin-session-delete": "link:<REPO>"`；
@@ -124,6 +140,17 @@ for (const session of this._ctx.sessions.list()) {            // 已打开、常
 而 `ctx.sessions` 只有 `create/prepare/enter/announce/flush/get/list/fork`，**没有任何移除条目的方法**，`sessionController` 也没有删除/驱逐接口。所以：一个**已经打开过**的对话，即使它的文件已经被删掉，在 DSH 重启（丢掉常驻内存）之前仍会被列出来。
 
 侧边栏渲染时会按归档集过滤（`dsh-client-ui-workspace/lib/client.js:357-367` 的 `sessionVisible`，默认档 `!archived.has(id)`），所以归档是让这一行当场消失的**唯一受支持手段**。`archiveSession` 对「没有归属任何工作区」的会话同样有效（`dsh-workspace/lib/index.js:507-540`：*"The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant."*），并且会顺手取消 pin。
+
+## 发布
+
+```bash
+npm version patch --no-git-tag-version   # 或 minor / major
+git commit -am "release: vX.Y.Z"
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push && git push origin vX.Y.Z
+```
+
+推 tag 会触发 [`release.yml`](.github/workflows/release.yml)：先跑 `npm test`，再把 `lib/` + `package.json` + `cordis.patch.yml` + `README.md` + `LICENSE` 打成一个 zip 并附上 `SHA256SUMS.txt`，挂到对应 release 上（tag 还没有 release 就顺手建一个）。给已存在的 tag 补资产用 Actions 页面上的 **Run workflow**（`workflow_dispatch` 输入 tag 名），重复运行只覆盖资产。
 
 ## 卸载
 

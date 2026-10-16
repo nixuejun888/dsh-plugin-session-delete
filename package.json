@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-plugin-session-delete",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Delete DSH conversations: a 「删除对话」 item in the sidebar session menu plus out-of-band deletion of the session log and its projection cache (archive first so the row disappears, then move to a recoverable trash or purge).",

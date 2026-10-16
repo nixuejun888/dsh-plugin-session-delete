@@ -12,3 +12,6 @@ deleted.jsonl
 backup/
 .DS_Store
 Thumbs.db
+
+# Built by .github/workflows/release.yml
+dist/

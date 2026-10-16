@@ -1,0 +1,55 @@
+name: release
+
+# Packages the plugin into an installable zip and attaches it — plus a checksum —
+# to the matching GitHub release. Runs when a version tag is pushed, or on demand
+# for a tag whose release already exists.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to package and attach
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # Never attach an archive of a revision that does not pass its own tests.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+
+      - name: Build the archive
+        run: |
+          set -euo pipefail
+          stage='dist/dsh-plugin-session-delete'
+          mkdir -p "$stage"
+          cp -r lib package.json cordis.patch.yml README.md LICENSE "$stage/"
+          (cd dist && zip -qr "dsh-plugin-session-delete-${TAG}.zip" dsh-plugin-session-delete)
+          (cd dist && sha256sum "dsh-plugin-session-delete-${TAG}.zip" > SHA256SUMS.txt)
+          unzip -l "dist/dsh-plugin-session-delete-${TAG}.zip"
+          cat dist/SHA256SUMS.txt
+
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A tag pushed without a release gets one; an existing release is reused
+          # so re-running this workflow only refreshes the assets.
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/*.zip dist/SHA256SUMS.txt --clobber
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
