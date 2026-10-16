@@ -95,7 +95,7 @@ npm run test:e2e  # 真实存储上的可逆端到端（默认拒绝运行，见
 
 | 脚本 | 覆盖 | 结果 |
 | --- | --- | --- |
-| `test/host.test.mjs` | Host 半边：全部拒绝原因、trash/purge、多 slug、并发 busy、归档四态（含「非活动拒绝仍删」）、部分失败与回滚（用进程 CWD 占用制造确定性 `EBUSY`）、投影缓存语义、审计流水、HTTP 状态码（200/400/401/404/503/500） | 88 passed / 0 failed |
+| `test/host.test.mjs` | Host 半边：全部拒绝原因、trash/purge、多 slug、并发 busy、归档四态（含「非活动拒绝仍删」）、部分失败与回滚（`withLocked` 制造确定性存储失败：Windows 用「进程 CWD 不可删/不可改名」，POSIX 用「父目录只读」）、投影缓存语义、审计流水、HTTP 状态码（200/400/401/404/503/500） | 88 passed / 0 failed |
 | `test/client.test.mjs` | Client 半边：bundle 契约、槽位注册、确认对话框渲染与主题令牌、请求形状与重入保护、先藏行后删文件（含顺序证明）、拒绝时回滚、提示文案、绝不 reload | 51 passed / 0 failed |
 | `test/e2e-real.mjs` | **真实存储**上的可逆端到端：挑一个无归属会话，删前做全树 sha256 快照，走真实 `POST /delete`，验证归档发生在文件仍在时、trash 副本逐字节一致、投影缓存与审计流水，最后 `finally` 原样搬回并校验字节一致 | ALL PASSED |
 

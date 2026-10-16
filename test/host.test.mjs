@@ -4,10 +4,10 @@
  *
  *   node test/host.test.mjs
  */
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url))
@@ -341,9 +341,9 @@ await rm(trashDirPath, { force: true })
 await rm(sessionDir('session-preal'), { recursive: true, force: true })
 
 // ── a PARTIAL failure must never pretend nothing happened. Two stored copies,
-// the second held as this process's working directory — Windows refuses to
-// remove or rename a live cwd — so the first copy is destroyed before the second
-// fails. The row must NOT be put back, and the failure must reach the audit log.
+// the second locked by `withLocked` — so the first copy is destroyed before the
+// second fails. The row must NOT be put back, and the failure must reach the
+// audit log.
 const auditPath = join(root, 'plugins', 'dsh-session-delete', 'deleted.jsonl')
 async function lastAuditFor(sessionId) {
   const lines = (await readFile(auditPath, 'utf8').catch(() => '')).trim().split('\n').filter(Boolean)
@@ -354,13 +354,30 @@ async function lastAuditFor(sessionId) {
   return null
 }
 const heldCwd = process.cwd()
-/** Run `task` while the process's working directory is `dir` (which locks it). */
-async function holdingCwd(dir, task) {
-  process.chdir(dir)
+/**
+ * Run `task` while `dir` cannot be removed or renamed, so a storage failure can
+ * be injected deterministically in the middle of a multi-directory delete.
+ *
+ * There is no portable "busy directory": POSIX happily unlinks open files and
+ * even a live working directory, so each platform needs its own lock —
+ * Windows refuses to remove or rename a live working directory, POSIX refuses
+ * both once the parent directory is not writable.
+ */
+async function withLocked(dir, task) {
+  if (process.platform === 'win32') {
+    process.chdir(dir)
+    try {
+      return await task()
+    } finally {
+      process.chdir(heldCwd)
+    }
+  }
+  const parent = dirname(dir)
+  await chmod(parent, 0o500)
   try {
     return await task()
   } finally {
-    process.chdir(heldCwd)
+    await chmod(parent, 0o755)
   }
 }
 
@@ -368,7 +385,7 @@ await seedSession('session-purge-partial')
 const purgeLocked = join(root, 'sessions', '--zz-locked--', 'session-purge-partial')
 await mkdir(purgeLocked, { recursive: true })
 await writeFile(join(purgeLocked, 'session.v4.jsonl.zstd'), 'locked copy', 'utf8')
-const partial = await holdingCwd(purgeLocked, () =>
+const partial = await withLocked(purgeLocked, () =>
   tools[0].execute({ sessionId: 'session-purge-partial', mode: 'purge' }),
 )
 check(
@@ -405,7 +422,7 @@ await seedSession('session-restore')
 const restoreLocked = join(root, 'sessions', '--zz-locked--', 'session-restore')
 await mkdir(restoreLocked, { recursive: true })
 await writeFile(join(restoreLocked, 'session.v4.jsonl.zstd'), 'locked copy', 'utf8')
-const rolled = await holdingCwd(restoreLocked, () => tools[0].execute({ sessionId: 'session-restore' }))
+const rolled = await withLocked(restoreLocked, () => tools[0].execute({ sessionId: 'session-restore' }))
 check(
   'a fully rolled-back delete reports io-error',
   rolled.deleted === false && rolled.reason === 'io-error',
