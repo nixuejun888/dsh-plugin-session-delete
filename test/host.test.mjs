@@ -462,8 +462,11 @@ const noCache = await tools[0].execute({ sessionId: 'session-nocache' })
 check('a delete without a projection cache still succeeds', noCache.deleted === true, JSON.stringify(noCache))
 check('projectionRemoved is false when there was no cache', noCache.projectionRemoved === false, JSON.stringify(noCache))
 
-// ── HTTP refusals: an untrusted caller and a malformed body must both be
-// rejected without touching the filesystem.
+// ── HTTP admission. The route is registered `anonymous` on purpose: DSH 0.2.3
+// answers a default (`required`) named route with a bare `unauthorized` before
+// the handler runs, which made every delete from the GUI fail. The carrier
+// still applies its Host/Origin source policy to anonymous routes, and the
+// handler refuses a cross-site caller and a non-owner Peer itself.
 function makeRawReq(method, url, text) {
   const chunks = text === undefined ? [] : [Buffer.from(text, 'utf8')]
   return {
@@ -474,57 +477,48 @@ function makeRawReq(method, url, text) {
     },
   }
 }
-const rejectingRoutes = []
-mod.apply(
-  {
-    tools: { register: () => () => {} },
-    webServer: { register: (route) => (rejectingRoutes.push(route), () => {}) },
-    connection: { admit: () => ({ rejection: { status: 401, message: 'untrusted' } }) },
-    get: () => null,
-  },
-  {},
-)
-const rejected = makeRes()
-await rejectingRoutes[0].handler(
-  makeReq('POST', '/dsh-session-delete-api/delete', { sessionId: 'session-live' }),
-  rejected,
-)
-check('an untrusted caller is rejected with 401', rejected.status === 401, String(rejected.status))
-check('the rejected request deleted nothing', existsSync(sessionDir('session-live')))
+const mainRoute = routes[0]
+check('the route asks for anonymous auth, not the required default', mainRoute?.auth === 'anonymous', String(mainRoute?.auth))
 
-const malformedRoutes = []
-mod.apply(
-  {
-    tools: { register: () => () => {} },
-    webServer: { register: (route) => (malformedRoutes.push(route), () => {}) },
-    connection: { admit: () => ({ ok: true }) },
-    get: () => null,
-  },
-  {},
+// A cross-site POST — the Origin a browser sends never matches the Host — must
+// not be able to delete anything, and it must not even be dispatched.
+const crossSite = makeRes()
+const crossSiteReq = makeReq('POST', '/dsh-session-delete-api/delete', { sessionId: 'session-live' })
+crossSiteReq.headers = { host: '127.0.0.1:57721', origin: 'http://evil.example' }
+await mainRoute.handler(crossSiteReq, crossSite)
+check('a cross-site caller is rejected with 403', crossSite.status === 403, String(crossSite.status))
+check('the cross-site request deleted nothing', existsSync(sessionDir('session-live')))
+
+// A Peer that is not the owner must not reach a delete either.
+const foreign = makeRes()
+await mainRoute.handler(
+  makeReq('POST', '/dsh-session-delete-api/delete', { sessionId: 'session-live' }),
+  foreign,
+  { principal: { kind: 'someone-else' } },
 )
+check('a non-owner Peer is rejected with 403', foreign.status === 403, String(foreign.status))
+check('the non-owner request deleted nothing', existsSync(sessionDir('session-live')))
+
+// The GUI's own request: same-origin Host, no credential, no Peer.
+const statusRes = makeRes()
+const statusReq = makeReq('GET', '/dsh-session-delete-api/status')
+statusReq.headers = { host: '127.0.0.1:57721', origin: 'http://127.0.0.1:57721' }
+await mainRoute.handler(statusReq, statusRes)
+check('a same-origin request is served', statusRes.status === 200, String(statusRes.status))
+check('the status payload names the storage roots', statusRes.body.includes('sessionsRoot'), statusRes.body.slice(0, 160))
+
+// A malformed body is the caller's fault, not a server error.
 const malformed = makeRes()
-await malformedRoutes[0].handler(
-  makeRawReq('POST', '/dsh-session-delete-api/delete', '{not json'),
-  malformed,
-)
+await mainRoute.handler(makeRawReq('POST', '/dsh-session-delete-api/delete', '{not json'), malformed)
 check('a malformed body is reported as 400', malformed.status === 400, String(malformed.status))
 
-// ── fail closed: without the connection service the route must refuse rather
-// than serve an unauthenticated delete to anything that reaches the port.
-const noAuthTools = []
-const noAuthRoutes = []
-mod.apply(
-  {
-    tools: { register: (tool) => (noAuthTools.push(tool), () => {}) },
-    webServer: { register: (route) => (noAuthRoutes.push(route), () => {}) },
-    get: () => null,
-  },
-  {},
-)
-const refused = makeRes()
-await noAuthRoutes[0].handler(makeReq('POST', '/dsh-session-delete-api/delete', { sessionId: 'session-live' }), refused)
-check('a runtime without connection refuses the route', refused.status === 503, String(refused.status))
-check('that refusal deleted nothing', existsSync(sessionDir('session-live')))
+// ── the delete path itself, end to end over the route: the GUI deletes a
+// conversation whose storage directory exists.
+await seedSession('session-http')
+const overHttp = makeRes()
+await mainRoute.handler(makeReq('POST', '/dsh-session-delete-api/delete', { sessionId: 'session-http' }), overHttp)
+check('a same-origin delete succeeds', overHttp.status === 200 && overHttp.body.includes('"deleted":true'), overHttp.body.slice(0, 200))
+check('the conversation is gone from the store', !existsSync(sessionDir('session-http')))
 
 // ── graceful degradation: a runtime with no activity waterfall falls back to
 // the agent registry instead of guessing that everything is idle.

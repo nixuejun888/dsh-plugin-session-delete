@@ -69,11 +69,23 @@ cordis.patch.yml      供 profile bundle 方式挂载
 
 ## Host 半边（`lib/index.js`）
 
-- `inject = ['tools', 'webServer', 'connection']`。
-- HTTP API 前缀 `/dsh-session-delete-api`（走 `ctx.connection.admit(req)` 鉴权；**取不到鉴权服务时直接 503 拒绝**，不降级放行）：
+- `inject = ['tools', 'webServer']`。
+- HTTP API 前缀 `/dsh-session-delete-api`，路由注册为 **`auth: 'anonymous'`**（原因见下）：
   - `GET /status` → 存储根目录、回收站目录、磁盘上会话数量；
   - `GET /sessions` → 磁盘上所有会话（id / 项目 / 路径 / 大小 / 修改时间）；
   - `POST /delete` `{ sessionId, mode }` → 删除。
+
+### 为什么要 `anonymous`（DSH 0.2.3 起）
+
+`webServer.register` 的 `auth` 字段**默认是 `required`**：命名路由默认要过 `ctx.connection.authentication` 的凭据校验。升级到 0.2.3 后，这条路由对**页面自己发出的请求**也返回了一个纯文本 `unauthorized`（带 `Cache-Control: no-store`，是承载层的准入拒绝，处理函数根本没跑），于是点「删除对话」什么都不发生，审计日志里也一条记录都没有。
+
+现在改为 `auth: 'anonymous'` —— 承载层对匿名路由**仍然执行 Host/Origin 源检查**（跨站请求依旧被拒），处理函数再自己兜一层：
+
+- `Origin` 与 `Host` 不一致 → 403（跨站表单/脚本打过来的请求）；
+- 承载层若确实带了一个 Peer 而它不是 `owner` → 403；
+- 只接受 `content-type: application/json` 的 POST。
+
+所以 0.2.3 之后**不要再自己调 `ctx.connection.admit(req)`**：那条路径校验的凭据与页面无关，会把 GUI 自己的请求判成未登录。
 - 工具 `dsh_delete_conversation`（`{ sessionId, mode? }`），让 Agent 也能删。
 - **安全护栏**：非法 id、当前正在进行的会话、**仍在运行**的会话一律拒绝。判定「仍在运行」用的是 DSH 自己的准入缝隙 `ctx.waterfall('workspace/session-activity', { sessionId }, () => [])` —— 与 `dsh-workspace` 归档会话时同一个 waterfall（由 Agent registry / job registry / Subagent runtime / Schedule 提供者回答）；没有 waterfall 的运行时降级为查 `ctx.agents`。**不要**用 `sessions.list()` / `sessionQuery.listSessions()` 判断 live：它们返回的是所有*已持久化*的会话，会把每个对话都判成 live（这正是 0.1.0 版「任何对话都删不掉」的原因）。
 - **默认 mode = `trash`**：把会话目录 `rename` 到 `<DSH_HOME>/plugins/dsh-session-delete/trash/<id>--<时间戳>`，可人工恢复；`mode: 'purge'` 才是 `rm -rf`。默认值取自插件配置的 `defaultMode`。审计记录写在 `<DSH_HOME>/plugins/dsh-session-delete/deleted.jsonl`：成功、失败、部分失败都追加一条（失败条目带 `ok:false`、`restored`、`destroyed`、`stranded`）。
@@ -114,7 +126,7 @@ npm run test:e2e  # 真实存储上的可逆端到端（默认拒绝运行，见
 
 | 脚本 | 覆盖 | 结果 |
 | --- | --- | --- |
-| `test/host.test.mjs` | Host 半边：全部拒绝原因、trash/purge、多 slug、并发 busy、归档四态（含「非活动拒绝仍删」）、部分失败与回滚（`withLocked` 制造确定性存储失败：Windows 用「进程 CWD 不可删/不可改名」，POSIX 用「父目录只读」）、投影缓存语义、审计流水、HTTP 状态码（200/400/401/404/503/500） | 88 passed / 0 failed |
+| `test/host.test.mjs` | Host 半边：全部拒绝原因、trash/purge、多 slug、并发 busy、归档四态（含「非活动拒绝仍删」）、部分失败与回滚（`withLocked` 制造确定性存储失败：Windows 用「进程 CWD 不可删/不可改名」，POSIX 用「父目录只读」）、投影缓存语义、审计流水、HTTP 准入（anonymous 路由的自有源检查、403 跨站/非 owner、400 畸形体、200 删除） | 93 passed / 0 failed |
 | `test/client.test.mjs` | Client 半边：bundle 契约、槽位注册、确认对话框渲染与主题令牌、请求形状与重入保护、先藏行后删文件（含顺序证明）、拒绝时回滚、提示文案、绝不 reload | 51 passed / 0 failed |
 | `test/e2e-real.mjs` | **真实存储**上的可逆端到端：挑一个无归属会话，删前做全树 sha256 快照，走真实 `POST /delete`，验证归档发生在文件仍在时、trash 副本逐字节一致、投影缓存与审计流水，最后 `finally` 原样搬回并校验字节一致 | ALL PASSED |
 
